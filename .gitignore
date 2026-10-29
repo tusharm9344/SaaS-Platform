@@ -7,7 +7,7 @@ __pycache__/
 .venv/
 venv/
 env/
-
+.pytest_cache/
 # Environment variables and secrets
 .env
 .env.*
@@ -24,3 +24,6 @@ staticfiles/
 
 # OS
 .DS_Store
+.coverage
+htmlcov/
+*.log
