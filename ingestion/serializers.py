@@ -4,10 +4,17 @@ from ingestion.models import ErrorEvent
 
 
 class ErrorEventSerializer(serializers.ModelSerializer):
+    service_name = serializers.CharField(
+        max_length=200,
+        required=True,
+        write_only=True,
+    )
+
     class Meta:
         model = ErrorEvent
         fields = [
             "id",
+            "service_name",
             "message",
             "exception_type",
             "stack_trace",
@@ -16,6 +23,26 @@ class ErrorEventSerializer(serializers.ModelSerializer):
             "occurred_at",
         ]
         read_only_fields = ["id"]
+
+    def validate_service_name(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Service name cannot be empty."
+            )
+
+        return value
+
+    def validate_environment(self, value):
+        value = value.strip().lower()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Environment cannot be empty."
+            )
+
+        return value
 
     def validate_message(self, value):
         if not value.strip():

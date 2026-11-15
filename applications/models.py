@@ -59,3 +59,40 @@ class ApplicationAPIKey(models.Model):
 
     def __str__(self):
         return f"{self.application.name} - {self.name}"
+class Service(models.Model):
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="services",
+    )
+
+    name = models.CharField(max_length=200)
+    environment = models.CharField(max_length=50, default="production")
+
+    is_active = models.BooleanField(default=True)
+    first_seen = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["application", "name", "environment"],
+                name="unique_service_per_app_environment",
+            )
+        ]
+
+        indexes = [
+            models.Index(
+                fields=["application", "environment"],
+                name="service_app_env_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.application.name} - {self.name} ({self.environment})"

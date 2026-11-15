@@ -16,6 +16,13 @@ class ErrorEvent(models.Model):
         default=uuid.uuid4,
         editable=False,
     )
+    service = models.ForeignKey(
+        "applications.Service",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="error_events",
+    )
 
     application = models.ForeignKey(
         "applications.Application",
@@ -66,6 +73,10 @@ class ErrorEvent(models.Model):
             models.Index(
                 fields=["application", "fingerprint"],
                 name="event_app_fingerprint_idx",
+            ),
+            models.Index(
+                fields=["service", "-received_at"],
+                name="event_service_received_idx",
             ),
         ]
 

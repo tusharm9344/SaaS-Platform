@@ -22,6 +22,14 @@ class Incident(models.Model):
         related_name="incidents",
     )
 
+    service = models.ForeignKey(
+        "applications.Service",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="incidents",
+    )
+
     fingerprint = models.CharField(max_length=64)
     title = models.CharField(max_length=500)
 
@@ -42,16 +50,22 @@ class Incident(models.Model):
 
     class Meta:
         ordering = ["-last_seen"]
+
         constraints = [
             models.UniqueConstraint(
-                fields=["application", "fingerprint"],
-                name="unique_incident_app_fingerprint",
+                fields=["service", "fingerprint"],
+                name="unique_incident_service_fingerprint",
             )
         ]
+
         indexes = [
             models.Index(
                 fields=["application", "status", "-last_seen"],
                 name="incident_app_status_seen_idx",
+            ),
+            models.Index(
+                fields=["service", "status", "-last_seen"],
+                name="incident_service_status_idx",
             ),
         ]
 

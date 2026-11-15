@@ -1,9 +1,11 @@
 from django.db import transaction
+from django.utils import timezone
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
+from applications.models import Service
 from applications.services.api_keys import verify_api_key
 from ingestion.models import ErrorEvent
 from ingestion.serializers import ErrorEventSerializer
@@ -35,6 +37,8 @@ class ErrorIngestionView(APIView):
         serializer.is_valid(raise_exception=True)
 
         validated_data = serializer.validated_data
+        service_name = validated_data.pop("service_name")
+        environment = validated_data["environment"]
 
         validated_data["message"] = redact_sensitive_data(
             validated_data["message"]
@@ -47,8 +51,20 @@ class ErrorIngestionView(APIView):
         )
 
         with transaction.atomic():
+            service, created = Service.objects.get_or_create(
+                application=api_key.application,
+                name=service_name,
+                environment=environment,
+            )
+
+            Service.objects.filter(pk=service.pk).update(
+                last_seen=timezone.now(),
+                is_active=True,
+            )
+
             event = ErrorEvent.objects.create(
                 application=api_key.application,
+                service=service,
                 **validated_data,
             )
 
@@ -58,6 +74,9 @@ class ErrorIngestionView(APIView):
             {
                 "event_id": str(event.id),
                 "incident_id": str(incident.id),
+                "service_id": str(service.id),
+                "service_name": service.name,
+                "service_created": created,
                 "fingerprint": event.fingerprint,
                 "status": "accepted",
                 "message": "Error event stored and grouped successfully.",
