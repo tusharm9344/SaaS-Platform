@@ -4,8 +4,10 @@ from django.db import models
 
 
 class Investigation(models.Model):
+
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
         COMPLETED = "completed", "Completed"
         FAILED = "failed", "Failed"
 
@@ -15,10 +17,10 @@ class Investigation(models.Model):
         editable=False,
     )
 
-    incident = models.ForeignKey(
+    incident = models.OneToOneField(
         "incidents.Incident",
         on_delete=models.CASCADE,
-        related_name="investigations",
+        related_name="investigation",
     )
 
     status = models.CharField(
@@ -30,15 +32,18 @@ class Investigation(models.Model):
 
     summary = models.TextField(blank=True)
 
-    hypotheses = models.JSONField(default=list)
-    evidence = models.JSONField(default=list)
-    recommended_actions = models.JSONField(default=list)
+    hypotheses = models.JSONField(default=list, blank=True)
+
+    evidence = models.JSONField(default=list, blank=True)
+
+    recommended_actions = models.JSONField(default=list, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+
     completed_at = models.DateTimeField(
         null=True,
         blank=True,
     )
 
     def __str__(self):
-        return f"Investigation for {self.incident.title}"
+        return f"Investigation for {self.incident_id} ({self.status})"

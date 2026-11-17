@@ -45,13 +45,20 @@ class InvestigationServiceTests(TestCase):
 
         return incident
 
+    def investigate(self, incident):
+        investigation = Investigation.objects.create(
+            incident=incident,
+            status=Investigation.Status.RUNNING,
+        )
+        return investigate_incident(incident, investigation)
+
     def test_database_error_generates_database_hypothesis(self):
         incident = self.create_incident_with_event(
             "Database connection failed",
             "ConnectionError",
         )
 
-        report = investigate_incident(incident)
+        report = self.investigate(incident)
 
         self.assertEqual(
             report.status,
@@ -69,7 +76,7 @@ class InvestigationServiceTests(TestCase):
             "WidgetError",
         )
 
-        report = investigate_incident(incident)
+        report = self.investigate(incident)
 
         self.assertEqual(len(report.hypotheses), 1)
         self.assertEqual(
@@ -83,7 +90,7 @@ class InvestigationServiceTests(TestCase):
             "ConnectionError",
         )
 
-        report = investigate_incident(incident)
+        report = self.investigate(incident)
 
         self.assertTrue(
             Investigation.objects.filter(pk=report.pk).exists()

@@ -11,8 +11,9 @@ from ingestion.models import ErrorEvent
 from ingestion.serializers import ErrorEventSerializer
 from ingestion.services import redact_sensitive_data
 from incidents.services import group_error_event
+from investigations.tasks import investigate_incident_task
 
-
+from investigations.tasks import investigate_incident_task
 class ErrorIngestionView(APIView):
     authentication_classes = []
     permission_classes = []
@@ -69,6 +70,13 @@ class ErrorIngestionView(APIView):
             )
 
             incident = group_error_event(event)
+
+            # Queue investigation only after successful database commit.
+            transaction.on_commit(
+                lambda: investigate_incident_task.delay(
+                    str(incident.id)
+                )
+            )
 
         return Response(
             {
