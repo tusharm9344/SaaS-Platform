@@ -1,6 +1,8 @@
 import redis
 
 from celery import shared_task
+from celery.exceptions import Retry
+
 from django.conf import settings
 from django.db import close_old_connections
 from django.utils import timezone
@@ -21,57 +23,74 @@ def investigate_incident_task(self, incident_id):
     close_old_connections()
 
     redis_client = redis.Redis.from_url(
-        settings.CELERY_BROKER_URL
+        settings.CELERY_BROKER_URL,
+        socket_connect_timeout=5,
+        socket_timeout=5,
     )
 
     lock = redis_client.lock(
         f"investigation_lock:{incident_id}",
-        timeout=900,
+        timeout=1800,
         blocking=False,
     )
 
     acquired = False
+    investigation = None
 
     try:
+
         acquired = lock.acquire()
 
+        # Another worker is processing this incident.
         if not acquired:
-            return {
-                "status": "skipped",
-                "reason": "Another worker is investigating this incident.",
-                "incident_id": str(incident_id),
-            }
+            raise self.retry(
+                exc=RuntimeError("Incident investigation is locked."),
+                countdown=10,
+            )
 
         incident = Incident.objects.get(id=incident_id)
 
-        if Investigation.objects.filter(
+        investigation, _ = Investigation.objects.get_or_create(
             incident=incident,
-            status="completed",
-        ).exists():
+        )
+
+        # Prevent duplicate completed investigations.
+        if investigation.status == Investigation.Status.COMPLETED:
             return {
                 "status": "skipped",
                 "reason": "Investigation already completed.",
                 "incident_id": str(incident.id),
             }
 
+        # Start investigation.
+        investigation.status = Investigation.Status.RUNNING
+        investigation.save(update_fields=["status"])
+
         Incident.objects.filter(id=incident.id).update(
             status=Incident.Status.INVESTIGATING,
             updated_at=timezone.now(),
         )
 
-        investigation, _ = Investigation.objects.get_or_create(
-            incident=incident,
+        # Execute RCA.
+        investigation = investigate_incident(
+            incident,
+            investigation,
         )
-        investigation.status = Investigation.Status.RUNNING
-        investigation.save(update_fields=["status"])
 
-        investigation = investigate_incident(incident, investigation)
+        # RCA completed does not mean the incident is resolved.
+        Incident.objects.filter(id=incident.id).update(
+            status=Incident.Status.OPEN,
+            updated_at=timezone.now(),
+        )
 
         return {
             "status": "completed",
             "incident_id": str(incident.id),
             "investigation_id": str(investigation.id),
         }
+
+    except Retry:
+        raise
 
     except Incident.DoesNotExist:
         return {
@@ -81,15 +100,21 @@ def investigate_incident_task(self, incident_id):
         }
 
     except Exception as exc:
+
         if self.request.retries >= self.max_retries:
+
             investigation = Investigation.objects.filter(
                 incident_id=incident_id
             ).first()
-            if investigation is not None:
+
+            if investigation:
+
                 investigation.status = Investigation.Status.FAILED
+
                 investigation.summary = (
-                    f"Investigation failed: {str(exc)[:1000]}"
+                    f"Investigation failed after retries: {str(exc)[:1000]}"
                 )
+
                 investigation.save(
                     update_fields=["status", "summary"]
                 )
@@ -105,7 +130,18 @@ def investigate_incident_task(self, incident_id):
                 "incident_id": str(incident_id),
             }
 
+        if investigation:
+
+            investigation.status = Investigation.Status.PENDING
+            investigation.save(update_fields=["status"])
+
+        Incident.objects.filter(id=incident_id).update(
+            status=Incident.Status.OPEN,
+            updated_at=timezone.now(),
+        )
+
         raise self.retry(exc=exc)
+
     finally:
 
         if acquired:

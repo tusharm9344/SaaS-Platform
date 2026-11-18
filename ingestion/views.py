@@ -7,18 +7,22 @@ from rest_framework import status
 
 from applications.models import Service
 from applications.services.api_keys import verify_api_key
+
 from ingestion.models import ErrorEvent
 from ingestion.serializers import ErrorEventSerializer
 from ingestion.services import redact_sensitive_data
+
 from incidents.services import group_error_event
 from investigations.tasks import investigate_incident_task
 
-from investigations.tasks import investigate_incident_task
+
 class ErrorIngestionView(APIView):
+
     authentication_classes = []
     permission_classes = []
 
     def post(self, request):
+
         raw_key = request.headers.get("X-API-Key", "")
         api_key = verify_api_key(raw_key)
 
@@ -38,20 +42,24 @@ class ErrorIngestionView(APIView):
         serializer.is_valid(raise_exception=True)
 
         validated_data = serializer.validated_data
+
         service_name = validated_data.pop("service_name")
         environment = validated_data["environment"]
 
         validated_data["message"] = redact_sensitive_data(
             validated_data["message"]
         )
+
         validated_data["exception_type"] = redact_sensitive_data(
             validated_data.get("exception_type", "")
         )
+
         validated_data["stack_trace"] = redact_sensitive_data(
             validated_data.get("stack_trace", "")
         )
 
         with transaction.atomic():
+
             service, created = Service.objects.get_or_create(
                 application=api_key.application,
                 name=service_name,
@@ -71,11 +79,10 @@ class ErrorIngestionView(APIView):
 
             incident = group_error_event(event)
 
-            # Queue investigation only after successful database commit.
+            # Schedule RCA only after the transaction commits.
             transaction.on_commit(
-                lambda: investigate_incident_task.delay(
-                    str(incident.id)
-                )
+                lambda incident_id=str(incident.id):
+                    investigate_incident_task.delay(incident_id)
             )
 
         return Response(

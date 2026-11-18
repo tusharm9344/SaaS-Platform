@@ -5,6 +5,7 @@ from investigations.models import Investigation
 
 
 def investigate_incident(incident, investigation):
+
     events = list(
         ErrorEvent.objects.filter(
             incident=incident
@@ -23,16 +24,13 @@ def investigate_incident(incident, investigation):
     recommended_actions = []
 
     # Database analysis
-    if any(
-        keyword in combined_messages
-        for keyword in [
-            "database",
-            "sql",
-            "postgres",
-            "mysql",
-            "connection pool",
-        ]
-    ):
+    if any(keyword in combined_messages for keyword in [
+        "database",
+        "sql",
+        "postgres",
+        "mysql",
+        "connection pool",
+    ]):
         hypotheses.append({
             "cause": "Database connectivity issue",
             "confidence": 0.65,
@@ -49,15 +47,12 @@ def investigate_incident(incident, investigation):
         ])
 
     # Network analysis
-    if any(
-        keyword in combined_messages
-        for keyword in [
-            "network",
-            "timeout",
-            "connection refused",
-            "connectionerror",
-        ]
-    ):
+    if any(keyword in combined_messages for keyword in [
+        "network",
+        "timeout",
+        "connection refused",
+        "connectionerror",
+    ]):
         hypotheses.append({
             "cause": "Network connectivity issue",
             "confidence": 0.60,
@@ -74,15 +69,12 @@ def investigate_incident(incident, investigation):
         ])
 
     # Resource analysis
-    if any(
-        keyword in combined_messages
-        for keyword in [
-            "memory",
-            "out of memory",
-            "resource exhausted",
-            "cpu",
-        ]
-    ):
+    if any(keyword in combined_messages for keyword in [
+        "memory",
+        "out of memory",
+        "resource exhausted",
+        "cpu",
+    ]):
         hypotheses.append({
             "cause": "Resource exhaustion",
             "confidence": 0.70,
@@ -113,18 +105,19 @@ def investigate_incident(incident, investigation):
             "Inspect the stack trace and application logs manually."
         )
 
-    summary = (
+    investigation.summary = (
         f"Investigation completed for {incident.title}. "
         f"Analysed {len(events)} recent error events."
     )
 
-    investigation.status = Investigation.Status.COMPLETED
-    investigation.summary = summary
     investigation.hypotheses = hypotheses
     investigation.evidence = evidence
+
     investigation.recommended_actions = list(
         dict.fromkeys(recommended_actions)
     )
+
+    investigation.status = Investigation.Status.COMPLETED
     investigation.completed_at = timezone.now()
 
     investigation.save()
