@@ -27,3 +27,5 @@ staticfiles/
 .coverage
 htmlcov/
 *.log
+*.sqlite3
+*.sqlite3-journal
