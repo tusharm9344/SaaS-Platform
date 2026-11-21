@@ -1,5 +1,7 @@
 import unittest
-from unittest.mock import patch, MagicMock
+import sys
+import threading
+from unittest.mock import MagicMock, patch
 
 from runtime_rca import RuntimeRCA
 from runtime_rca.exceptions import ConfigurationError
@@ -132,6 +134,53 @@ class RuntimeRCATests(unittest.TestCase):
 
             self.assertTrue(result)
 
+    def test_main_thread_exception_hook(self):
+        with patch("sys.excepthook") as previous_hook:
+            with patch.object(self.rca, "capture_exception") as capture:
+                with patch.object(self.rca, "flush"):
+                    self.rca.install_exception_hooks()
+
+                    try:
+                        raise ValueError("Main thread crashed")
+                    except ValueError as error:
+                        sys.excepthook(
+                            type(error),
+                            error,
+                            error.__traceback__,
+                        )
+
+                    capture.assert_called_once()
+                    previous_hook.assert_called_once()
+
+                    self.rca.uninstall_exception_hooks()
+
+    def test_background_thread_exception_hook(self):
+        with patch("threading.excepthook") as previous_hook:
+            with patch.object(self.rca, "capture_exception") as capture:
+                with patch.object(self.rca, "flush"):
+                    self.rca.install_exception_hooks()
+
+                    def failing_function():
+                        raise ValueError("Background thread crashed")
+
+                    thread = threading.Thread(target=failing_function)
+                    thread.start()
+                    thread.join()
+
+                    capture.assert_called_once()
+                    previous_hook.assert_called_once()
+
+                    self.rca.uninstall_exception_hooks()
+
+    def test_exception_hooks_can_be_installed_only_once(self):
+        with patch("sys.excepthook") as previous_hook:
+            self.rca.install_exception_hooks()
+            self.rca.install_exception_hooks()
+
+            self.assertIs(sys.excepthook, self.rca._sys_hook)
+            self.assertIs(self.rca._previous_sys_hook, previous_hook)
+
+            self.rca.uninstall_exception_hooks()
 
 if __name__ == "__main__":
     unittest.main()

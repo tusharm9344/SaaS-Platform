@@ -1,4 +1,6 @@
 import logging
+import sys
+import threading
 import traceback
 
 from datetime import datetime, timezone
@@ -57,6 +59,13 @@ class RuntimeRCA:
             max_queue_size=max_queue_size,
         )
 
+        self._hooks_installed = False
+        self._previous_sys_hook = None
+        self._previous_thread_hook = None
+
+        self._sys_hook = self._handle_uncaught_exception
+        self._thread_hook = self._handle_uncaught_thread_exception
+
     def capture_exception(self, exception, severity="error"):
 
         try:
@@ -110,10 +119,88 @@ class RuntimeRCA:
             )
             return False
 
+    def install_exception_hooks(self):
+
+        if self._hooks_installed:
+            return True
+
+        self._previous_sys_hook = sys.excepthook
+        self._previous_thread_hook = threading.excepthook
+
+        sys.excepthook = self._sys_hook
+        threading.excepthook = self._thread_hook
+
+        self._hooks_installed = True
+
+        logger.info("Runtime RCA exception hooks installed.")
+
+        return True
+
+    def uninstall_exception_hooks(self):
+
+        if not self._hooks_installed:
+            return
+
+        if sys.excepthook is self._sys_hook:
+            sys.excepthook = self._previous_sys_hook
+
+        if threading.excepthook is self._thread_hook:
+            threading.excepthook = self._previous_thread_hook
+
+        self._hooks_installed = False
+
+        logger.info("Runtime RCA exception hooks uninstalled.")
+
+    def _handle_uncaught_exception(
+        self,
+        exc_type,
+        exc_value,
+        exc_traceback,
+    ):
+
+        try:
+            self.capture_exception(exc_value)
+            self.flush(timeout=2)
+
+        except Exception:
+            logger.exception(
+                "Runtime RCA failed to process an uncaught exception."
+            )
+
+        if self._previous_sys_hook:
+            self._previous_sys_hook(
+                exc_type,
+                exc_value,
+                exc_traceback,
+            )
+        else:
+            sys.__excepthook__(
+                exc_type,
+                exc_value,
+                exc_traceback,
+            )
+
+    def _handle_uncaught_thread_exception(self, args):
+
+        try:
+            self.capture_exception(args.exc_value)
+            self.flush(timeout=2)
+
+        except Exception:
+            logger.exception(
+                "Runtime RCA failed to process a thread exception."
+            )
+
+        if self._previous_thread_hook:
+            self._previous_thread_hook(args)
+        else:
+            threading.__excepthook__(args)
+
     def flush(self, timeout=None):
         return self.worker.flush(timeout=timeout)
 
     def close(self, timeout=5):
+        self.uninstall_exception_hooks()
         return self.worker.close(timeout=timeout)
 
     def __enter__(self):
