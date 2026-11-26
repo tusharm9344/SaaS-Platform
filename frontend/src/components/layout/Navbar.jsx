@@ -21,7 +21,7 @@ function Navbar({ onMenuClick }) {
         </button>
 
         <div>
-          <p className="text-sm font-medium text-[#86868b]">
+          <p className="text-sm font-medium text-[#e5e5ea]">
             Workspace
           </p>
 

@@ -1,7 +1,21 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+
 import Dashboard from './pages/Dashboard'
+import IncidentDetail from './pages/IncidentDetail'
 
 function App() {
-  return <Dashboard />
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route
+          path="/incidents/:incidentId"
+          element={<IncidentDetail />}
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  )
 }
 
 export default App

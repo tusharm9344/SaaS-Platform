@@ -7,79 +7,148 @@ import {
   ArrowRight,
   Clock,
   MoreHorizontal,
+  RefreshCw,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
 
-import { useState } from 'react'
 import Sidebar from '../components/layout/Sidebar'
 import Navbar from '../components/layout/Navbar'
 import StatisticsCard from '../components/ui/StatisticsCard'
 
-const initialIncidents = [
-  {
-    id: 'INC-1042',
-    title: 'Database connection timeout',
-    service: 'Payment Service',
-    environment: 'Production',
-    severity: 'Critical',
-    status: 'Investigating',
-    time: '2 minutes ago',
-  },
-  {
-    id: 'INC-1041',
-    title: 'Authentication token expired',
-    service: 'Auth Service',
-    environment: 'Production',
-    severity: 'High',
-    status: 'Open',
-    time: '18 minutes ago',
-  },
-  {
-    id: 'INC-1040',
-    title: 'Redis connection refused',
-    service: 'Cache Service',
-    environment: 'Production',
-    severity: 'Medium',
-    status: 'Resolved',
-    time: '1 hour ago',
-  },
-  {
-    id: 'INC-1039',
-    title: 'Unexpected null reference',
-    service: 'User Service',
-    environment: 'Development',
-    severity: 'Low',
-    status: 'Resolved',
-    time: '3 hours ago',
-  },
-]
+import {
+  getIncidents,
+  resolveIncident as resolveIncidentAPI,
+} from '../services/incidentService'
+
+
+function formatRelativeTime(dateString) {
+  if (!dateString) return 'Unknown'
+
+  const date = new Date(dateString)
+
+  if (Number.isNaN(date.getTime())) return 'Unknown'
+
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
+
+  if (seconds < 60) return 'Just now'
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)} days ago`
+
+  return date.toLocaleDateString()
+}
+
+
+function formatStatus(status) {
+  if (!status) return 'Unknown'
+
+  return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
+}
+
 
 function Dashboard() {
-  const [incidents, setIncidents] = useState(initialIncidents)
-  const [filter, setFilter] = useState('All')
+  const navigate = useNavigate()
+  const [incidents, setIncidents] = useState([])
+  const [totalCount, setTotalCount] = useState(0)
+
+  const [filter, setFilter] = useState('all')
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const filteredIncidents =
-    filter === 'All'
-      ? incidents
-      : incidents.filter((incident) => incident.status === filter)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [resolvingId, setResolvingId] = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(null)
 
-  const resolveIncident = (id) => {
-    setIncidents((previous) =>
-      previous.map((incident) =>
-        incident.id === id
-          ? { ...incident, status: 'Resolved' }
-          : incident
+  // Fetch real incidents from Django
+  const fetchIncidents = async () => {
+    try {
+      setError(null)
+
+      const data = await getIncidents()
+
+      setIncidents(data.results || [])
+      setTotalCount(data.count ?? data.results?.length ?? 0)
+      setLastUpdated(new Date())
+
+    } catch (err) {
+      console.error('Failed to fetch incidents:', err)
+
+      setError(
+        err.response?.data?.detail ||
+        'Unable to load incidents. Please check your connection.'
       )
-    )
+    } finally {
+      setLoading(false)
+    }
   }
 
+  useEffect(() => {
+    fetchIncidents()
+  }, [])
+
+  // Statistics
   const openCount = incidents.filter(
-    (incident) => incident.status !== 'Resolved'
+    (incident) => incident.status === 'open'
+  ).length
+
+  const investigatingCount = incidents.filter(
+    (incident) => incident.status === 'investigating'
   ).length
 
   const resolvedCount = incidents.filter(
-    (incident) => incident.status === 'Resolved'
+    (incident) => incident.status === 'resolved'
   ).length
+
+  const affectedServices = new Set(
+    incidents.map((incident) => incident.service).filter(Boolean)
+  ).size
+
+  // Filter incidents
+  const filteredIncidents = useMemo(() => {
+    if (filter === 'all') return incidents
+
+    return incidents.filter(
+      (incident) => incident.status === filter
+    )
+  }, [incidents, filter])
+
+  // Resolve incident through Django API
+  const handleResolveIncident = async (incidentId) => {
+    try {
+      setResolvingId(incidentId)
+
+      await resolveIncidentAPI(incidentId)
+
+      setIncidents((previous) =>
+        previous.map((incident) =>
+          incident.id === incidentId
+            ? { ...incident, status: 'resolved' }
+            : incident
+        )
+      )
+
+      setLastUpdated(new Date())
+
+    } catch (err) {
+      console.error('Failed to resolve incident:', err)
+
+      setError(
+        err.response?.data?.detail ||
+        'Unable to resolve incident. Please try again.'
+      )
+
+    } finally {
+      setResolvingId(null)
+    }
+  }
+
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
 
   return (
     <div className="min-h-screen bg-[#f5f5f7]">
@@ -102,7 +171,7 @@ function Dashboard() {
 
             <div>
               <p className="mb-2 text-sm font-medium text-[#86868b]">
-                Monday, November 24, 2026
+                {today}
               </p>
 
               <h1 className="text-[32px] font-semibold tracking-[-0.04em] leading-tight text-[#1d1d1f]">
@@ -114,19 +183,33 @@ function Dashboard() {
               </p>
             </div>
 
-            <button className="flex items-center gap-2 rounded-lg bg-[#0071e3] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#0077ed]">
-              <Activity size={16} />
-              View activity
+            <button
+              onClick={fetchIncidents}
+              disabled={loading}
+              className="flex items-center gap-2 rounded-lg bg-[#0071e3] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#0077ed] disabled:opacity-50"
+            >
+              <RefreshCw
+                size={16}
+                className={loading ? 'animate-spin' : ''}
+              />
+              Refresh activity
             </button>
 
           </section>
+
+          {/* Error message */}
+          {error && (
+            <div className="mb-6 rounded-xl border border-[#ff3b30]/20 bg-[#fff0ef] px-4 py-3 text-sm text-[#d92d20]">
+              {error}
+            </div>
+          )}
 
           {/* Statistics */}
           <section className="page-section grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
             <StatisticsCard
               title="Total Incidents"
-              value="128"
+              value={loading ? '—' : totalCount}
               icon={Bug}
               color="bg-[#e8f1fc] text-[#0071e3]"
               description="Across all applications"
@@ -134,7 +217,7 @@ function Dashboard() {
 
             <StatisticsCard
               title="Open Incidents"
-              value={openCount}
+              value={loading ? '—' : openCount}
               icon={AlertTriangle}
               color="bg-[#fff0e5] text-[#ff9500]"
               description="Require your attention"
@@ -142,18 +225,18 @@ function Dashboard() {
 
             <StatisticsCard
               title="Resolved Incidents"
-              value={resolvedCount}
+              value={loading ? '—' : resolvedCount}
               icon={CheckCircle}
               color="bg-[#e8f8ed] text-[#34a853]"
               description="Successfully resolved"
             />
 
             <StatisticsCard
-              title="Active Services"
-              value="12"
+              title="Affected Services"
+              value={loading ? '—' : affectedServices}
               icon={Activity}
               color="bg-[#f0eafa] text-[#8e5ce6]"
-              description="Currently being monitored"
+              description="Services with recorded incidents"
             />
 
           </section>
@@ -176,28 +259,38 @@ function Dashboard() {
                   </p>
                 </div>
 
-                <button className="flex items-center gap-2 text-sm font-medium text-[#0071e3] hover:underline">
-                  View all
+                <button
+                  onClick={fetchIncidents}
+                  className="flex items-center gap-2 text-sm font-medium text-[#0071e3] hover:underline"
+                >
+                  Refresh
                   <ArrowRight size={15} />
                 </button>
 
               </div>
 
               {/* Filters */}
-              <div className="flex gap-2 px-6 py-4">
+              <div className="flex flex-wrap gap-2 px-6 py-4">
 
-                {['All', 'Open', 'Investigating', 'Resolved'].map((item) => (
+                {[
+                  { label: 'All', value: 'all' },
+                  { label: 'Open', value: 'open' },
+                  { label: 'Investigating', value: 'investigating' },
+                  { label: 'Resolved', value: 'resolved' },
+                ].map((item) => (
+
                   <button
-                    key={item}
-                    onClick={() => setFilter(item)}
+                    key={item.value}
+                    onClick={() => setFilter(item.value)}
                     className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                      filter === item
+                      filter === item.value
                         ? 'bg-[#1d1d1f] text-white'
                         : 'bg-[#f5f5f7] text-[#6e6e73] hover:bg-[#e5e5ea]'
                     }`}
                   >
-                    {item}
+                    {item.label}
                   </button>
+
                 ))}
 
               </div>
@@ -209,195 +302,266 @@ function Dashboard() {
 
                   <thead>
                     <tr className="border-y border-[#f0f0f2] bg-[#fafafa] text-[11px] font-medium uppercase tracking-wider text-[#a1a1a6]">
+
                       <th className="px-6 py-3">Incident</th>
-                      <th className="px-4 py-3">Severity</th>
+                      <th className="px-4 py-3">Occurrences</th>
                       <th className="px-4 py-3">Status</th>
-                      <th className="px-6 py-3">Time</th>
+                      <th className="px-6 py-3">Last seen</th>
                       <th className="px-4 py-3"></th>
+
                     </tr>
                   </thead>
 
                   <tbody>
-                    {filteredIncidents.map((incident) => (
+
+                    {loading ? (
+
+                      <tr>
+                        <td
+                          colSpan="5"
+                          className="px-6 py-12 text-center text-sm text-[#86868b]"
+                        >
+                          Loading incidents...
+                        </td>
+                      </tr>
+
+                    ) : filteredIncidents.map((incident) => (
+
                       <tr
                         key={incident.id}
-                        className="border-b border-[#f0f0f2] transition hover:bg-[#fafafa]"
+                        onClick={() => navigate(`/incidents/${incident.id}`)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            navigate(`/incidents/${incident.id}`)
+                          }
+                        }}
+                        role="link"
+                        tabIndex={0}
+                        className="cursor-pointer border-b border-[#f0f0f2] transition hover:bg-[#f5f8fc] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#0071e3]"
                       >
 
                         <td className="px-6 py-4">
-                          <p className="max-w-[260px] truncate text-sm font-medium text-[#1d1d1f]">
+
+                          <p className="max-w-[280px] truncate text-sm font-medium text-[#1d1d1f]">
                             {incident.title}
                           </p>
 
                           <p className="mt-1 text-xs text-[#86868b]">
-                            {incident.id} · {incident.service}
+                            {incident.service_name} · {incident.environment}
                           </p>
+
                         </td>
 
                         <td className="px-4 py-4">
-                          <span className={`rounded-md px-2 py-1 text-xs font-medium ${
-                            incident.severity === 'Critical'
-                              ? 'bg-[#fff0ef] text-[#ff3b30]'
-                              : incident.severity === 'High'
-                                ? 'bg-[#fff4e5] text-[#e58a00]'
-                                : incident.severity === 'Medium'
-                                  ? 'bg-[#fff9e6] text-[#b88a00]'
-                                  : 'bg-[#f0f0f2] text-[#6e6e73]'
-                          }`}>
-                            {incident.severity}
+
+                          <span className="rounded-md bg-[#f5f5f7] px-2 py-1 text-xs font-medium text-[#6e6e73]">
+                            {incident.occurrence_count}
                           </span>
+
                         </td>
 
                         <td className="px-4 py-4">
-                          <span className={`flex w-fit items-center gap-1.5 text-xs font-medium ${
-                            incident.status === 'Resolved'
-                              ? 'text-[#34a853]'
-                              : incident.status === 'Investigating'
-                                ? 'text-[#0071e3]'
-                                : 'text-[#e58a00]'
-                          }`}>
+
+                          <span
+                            className={`flex w-fit items-center gap-1.5 text-xs font-medium ${
+                              incident.status === 'resolved'
+                                ? 'text-[#34a853]'
+                                : incident.status === 'investigating'
+                                  ? 'text-[#0071e3]'
+                                  : 'text-[#e58a00]'
+                            }`}
+                          >
                             <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                            {incident.status}
+                            {formatStatus(incident.status)}
                           </span>
+
                         </td>
 
                         <td className="whitespace-nowrap px-6 py-4 text-xs text-[#86868b]">
+
                           <span className="flex items-center gap-1.5">
                             <Clock size={13} />
-                            {incident.time}
+                            {formatRelativeTime(incident.last_seen)}
                           </span>
+
                         </td>
 
                         <td className="px-4 py-4">
-                          {incident.status !== 'Resolved' ? (
+
+                          {incident.status !== 'resolved' ? (
+
                             <button
-                              onClick={() => resolveIncident(incident.id)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleResolveIncident(incident.id)
+                              }}
+                              onKeyDown={(event) => event.stopPropagation()}
+                              disabled={resolvingId === incident.id}
                               title="Mark as resolved"
-                              className="rounded-md p-2 text-[#86868b] transition hover:bg-[#e8f8ed] hover:text-[#34a853]"
+                              className="rounded-md p-2 text-[#86868b] transition hover:bg-[#e8f8ed] hover:text-[#34a853] disabled:opacity-40"
                             >
-                              <CheckCircle size={16} />
+                              {resolvingId === incident.id ? (
+                                <RefreshCw size={16} className="animate-spin" />
+                              ) : (
+                                <CheckCircle size={16} />
+                              )}
                             </button>
+
                           ) : (
-                            <MoreHorizontal size={17} className="text-[#a1a1a6]" />
+
+                            <MoreHorizontal
+                              size={17}
+                              className="text-[#a1a1a6]"
+                            />
+
                           )}
+
                         </td>
 
                       </tr>
+
                     ))}
 
-                    {filteredIncidents.length === 0 && (
+                    {!loading && filteredIncidents.length === 0 && (
+
                       <tr>
-                        <td colSpan="5" className="px-6 py-12 text-center text-sm text-[#86868b]">
+                        <td
+                          colSpan="5"
+                          className="px-6 py-12 text-center text-sm text-[#86868b]"
+                        >
                           No incidents found.
                         </td>
                       </tr>
+
                     )}
 
                   </tbody>
+
                 </table>
 
               </div>
+
+              <div className="border-t border-[#f0f0f2] px-6 py-3 text-xs text-[#86868b]">
+                Showing {filteredIncidents.length} of {totalCount} incidents
+              </div>
+
             </div>
 
             {/* Activity panel */}
             <div className="rounded-2xl border border-[#e5e5ea] bg-white p-6 xl:col-span-4">
 
               <div className="mb-7 flex items-center justify-between">
+
                 <div>
                   <h2 className="text-base font-semibold text-[#1d1d1f]">
-                    System health
+                    Incident overview
                   </h2>
 
                   <p className="mt-1 text-xs text-[#86868b]">
-                    Current platform status
+                    Current incident distribution
                   </p>
                 </div>
 
                 <MoreHorizontal size={19} className="text-[#86868b]" />
+
               </div>
 
-              <div className="mb-8 rounded-xl bg-[#eaf8ef] p-4">
+              {/* Incident status summary */}
+              <div className="mb-8 rounded-xl bg-[#f5f5f7] p-4">
 
                 <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-[#34c759]" />
 
-                  <p className="text-sm font-semibold text-[#248a45]">
-                    All systems operational
+                  <div className="h-2 w-2 rounded-full bg-[#0071e3]" />
+
+                  <p className="text-sm font-semibold text-[#1d1d1f]">
+                    Incident monitoring active
                   </p>
+
                 </div>
 
-                <p className="mt-2 text-xs leading-5 text-[#578a68]">
-                  Your monitored services are running normally.
+                <p className="mt-2 text-xs leading-5 text-[#86868b]">
+                  Your platform has recorded {totalCount} incidents across its monitored services.
                 </p>
 
               </div>
 
               <div className="space-y-6">
 
-                <div>
-                  <div className="mb-2 flex justify-between">
-                    <span className="text-sm text-[#6e6e73]">
-                      API availability
-                    </span>
+                {[
+                  {
+                    label: 'Open',
+                    count: openCount,
+                    color: 'bg-[#ff9f0a]',
+                  },
+                  {
+                    label: 'Investigating',
+                    count: investigatingCount,
+                    color: 'bg-[#0071e3]',
+                  },
+                  {
+                    label: 'Resolved',
+                    count: resolvedCount,
+                    color: 'bg-[#34c759]',
+                  },
+                ].map((item) => {
 
-                    <span className="text-sm font-semibold text-[#1d1d1f]">
-                      99.98%
-                    </span>
-                  </div>
+                  const percentage = incidents.length
+                    ? (item.count / incidents.length) * 100
+                    : 0
 
-                  <div className="h-1.5 overflow-hidden rounded-full bg-[#f0f0f2]">
-                    <div className="h-full w-[99.98%] rounded-full bg-[#34c759]" />
-                  </div>
-                </div>
+                  return (
 
-                <div>
-                  <div className="mb-2 flex justify-between">
-                    <span className="text-sm text-[#6e6e73]">
-                      Error rate
-                    </span>
+                    <div key={item.label}>
 
-                    <span className="text-sm font-semibold text-[#1d1d1f]">
-                      0.02%
-                    </span>
-                  </div>
+                      <div className="mb-2 flex justify-between">
 
-                  <div className="h-1.5 overflow-hidden rounded-full bg-[#f0f0f2]">
-                    <div className="h-full w-[2%] rounded-full bg-[#0071e3]" />
-                  </div>
-                </div>
+                        <span className="text-sm text-[#6e6e73]">
+                          {item.label}
+                        </span>
 
-                <div>
-                  <div className="mb-2 flex justify-between">
-                    <span className="text-sm text-[#6e6e73]">
-                      Service uptime
-                    </span>
+                        <span className="text-sm font-semibold text-[#1d1d1f]">
+                          {item.count}
+                        </span>
 
-                    <span className="text-sm font-semibold text-[#1d1d1f]">
-                      99.9%
-                    </span>
-                  </div>
+                      </div>
 
-                  <div className="h-1.5 overflow-hidden rounded-full bg-[#f0f0f2]">
-                    <div className="h-full w-[99.9%] rounded-full bg-[#34c759]" />
-                  </div>
-                </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-[#f0f0f2]">
+
+                        <div
+                          className={`h-full rounded-full ${item.color}`}
+                          style={{ width: `${percentage}%` }}
+                        />
+
+                      </div>
+
+                    </div>
+
+                  )
+                })}
 
               </div>
 
               <div className="mt-8 border-t border-[#e5e5ea] pt-5">
 
                 <div className="flex items-center justify-between">
+
                   <p className="text-xs text-[#86868b]">
                     Last updated
                   </p>
 
                   <p className="text-xs font-medium text-[#1d1d1f]">
-                    Just now
+                    {lastUpdated
+                      ? lastUpdated.toLocaleTimeString()
+                      : '—'}
                   </p>
+
                 </div>
 
-                <button className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-[#e5e5ea] py-2.5 text-sm font-medium text-[#1d1d1f] transition hover:bg-[#f5f5f7]">
-                  View system details
+                <button
+                  onClick={fetchIncidents}
+                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-[#e5e5ea] py-2.5 text-sm font-medium text-[#1d1d1f] transition hover:bg-[#f5f5f7]"
+                >
+                  Refresh dashboard
                   <ArrowUpRight size={15} />
                 </button>
 
@@ -414,7 +578,9 @@ function Dashboard() {
           </footer>
 
         </div>
+
       </main>
+
     </div>
   )
 }
