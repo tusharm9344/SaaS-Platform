@@ -19,18 +19,17 @@ const menuItems = [
 function Sidebar({ isOpen, onClose }) {
   return (
     <>
-      {/* Background overlay */}
-      <div
-        onClick={onClose}
-        className={`fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity duration-300 ${
-          isOpen
-            ? 'visible opacity-100'
-            : 'invisible opacity-0'
-        }`}
-      />
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
+          onClick={onClose}
+        />
+      )}
 
       {/* Sidebar drawer */}
       <aside
+        aria-hidden={!isOpen}
+        inert={!isOpen}
         className={`fixed left-0 top-0 z-50 flex h-screen w-72 flex-col border-r border-[#e5e5ea] bg-white px-5 py-6 shadow-2xl transition-transform duration-300 ease-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}

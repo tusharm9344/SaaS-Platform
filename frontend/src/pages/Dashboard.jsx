@@ -52,13 +52,29 @@ function Dashboard() {
   const [incidents, setIncidents] = useState([])
   const [totalCount, setTotalCount] = useState(0)
 
-  const [filter, setFilter] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [resolvingId, setResolvingId] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
+
+  const statistics = useMemo(() => {
+    return {
+      total: incidents.length,
+      open: incidents.filter(
+        (incident) => incident.status === 'open'
+      ).length,
+      resolved: incidents.filter(
+        (incident) => incident.status === 'resolved'
+      ).length,
+      ignored: incidents.filter(
+        (incident) => incident.status === 'ignored'
+      ).length,
+    }
+  }, [incidents])
 
   // Fetch real incidents from Django
   const fetchIncidents = async () => {
@@ -88,30 +104,23 @@ function Dashboard() {
   }, [])
 
   // Statistics
-  const openCount = incidents.filter(
-    (incident) => incident.status === 'open'
-  ).length
-
   const investigatingCount = incidents.filter(
     (incident) => incident.status === 'investigating'
   ).length
 
-  const resolvedCount = incidents.filter(
-    (incident) => incident.status === 'resolved'
-  ).length
+  const filteredIncidents = incidents.filter((incident) => {
+    const query = searchQuery.toLowerCase()
 
-  const affectedServices = new Set(
-    incidents.map((incident) => incident.service).filter(Boolean)
-  ).size
+    const matchesSearch =
+      incident.title?.toLowerCase().includes(query) ||
+      incident.service_name?.toLowerCase().includes(query) ||
+      incident.environment?.toLowerCase().includes(query)
 
-  // Filter incidents
-  const filteredIncidents = useMemo(() => {
-    if (filter === 'all') return incidents
+    const matchesStatus =
+      statusFilter === 'all' || incident.status === statusFilter
 
-    return incidents.filter(
-      (incident) => incident.status === filter
-    )
-  }, [incidents, filter])
+    return matchesSearch && matchesStatus
+  })
 
   // Resolve incident through Django API
   const handleResolveIncident = async (incidentId) => {
@@ -158,7 +167,7 @@ function Dashboard() {
         onClose={() => setSidebarOpen(false)}
       />
 
-      <main className="min-h-screen">
+      <main className="min-h-screen bg-[#f5f5f7]">
 
         <Navbar
           onMenuClick={() => setSidebarOpen(true)}
@@ -205,11 +214,11 @@ function Dashboard() {
           )}
 
           {/* Statistics */}
-          <section className="page-section grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
 
             <StatisticsCard
               title="Total Incidents"
-              value={loading ? '—' : totalCount}
+              value={loading ? '—' : statistics.total}
               icon={Bug}
               color="bg-[#e8f1fc] text-[#0071e3]"
               description="Across all applications"
@@ -217,7 +226,7 @@ function Dashboard() {
 
             <StatisticsCard
               title="Open Incidents"
-              value={loading ? '—' : openCount}
+              value={loading ? '—' : statistics.open}
               icon={AlertTriangle}
               color="bg-[#fff0e5] text-[#ff9500]"
               description="Require your attention"
@@ -225,29 +234,29 @@ function Dashboard() {
 
             <StatisticsCard
               title="Resolved Incidents"
-              value={loading ? '—' : resolvedCount}
+              value={loading ? '—' : statistics.resolved}
               icon={CheckCircle}
               color="bg-[#e8f8ed] text-[#34a853]"
               description="Successfully resolved"
             />
 
             <StatisticsCard
-              title="Affected Services"
-              value={loading ? '—' : affectedServices}
+              title="Ignored Incidents"
+              value={loading ? '—' : statistics.ignored}
               icon={Activity}
               color="bg-[#f0eafa] text-[#8e5ce6]"
-              description="Services with recorded incidents"
+              description="Incidents marked ignored"
             />
 
-          </section>
+          </div>
 
           {/* Main content grid */}
           <section className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
 
             {/* Incident table */}
-            <div className="overflow-hidden rounded-2xl border border-[#e5e5ea] bg-white xl:col-span-8">
+            <div className="settings-panel min-w-0 overflow-hidden xl:col-span-8">
 
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e5e5ea] px-6 py-5">
+              <div className="flex items-center justify-between gap-4 border-b border-[#e5e5ea] px-7 py-5">
 
                 <div>
                   <h2 className="text-base font-semibold text-[#1d1d1f]">
@@ -269,36 +278,33 @@ function Dashboard() {
 
               </div>
 
-              {/* Filters */}
-              <div className="flex flex-wrap gap-2 px-6 py-4">
+              {/* Search and status filters */}
+              <div className="mb-5 flex flex-col gap-3 px-6 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <input
+                  type="text"
+                  placeholder="Search incidents, services..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="min-h-11 w-full rounded-lg border border-[#e5e5ea] bg-white px-4 text-sm outline-none transition focus:border-[#0071e3]"
+                />
 
-                {[
-                  { label: 'All', value: 'all' },
-                  { label: 'Open', value: 'open' },
-                  { label: 'Investigating', value: 'investigating' },
-                  { label: 'Resolved', value: 'resolved' },
-                ].map((item) => (
-
-                  <button
-                    key={item.value}
-                    onClick={() => setFilter(item.value)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                      filter === item.value
-                        ? 'bg-[#1d1d1f] text-white'
-                        : 'bg-[#f5f5f7] text-[#6e6e73] hover:bg-[#e5e5ea]'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-
-                ))}
-
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="min-h-11 rounded-lg border border-[#e5e5ea] bg-white px-4 text-sm outline-none focus:border-[#0071e3]"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="open">Open</option>
+                  <option value="investigating">Investigating</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="ignored">Ignored</option>
+                </select>
               </div>
 
               {/* Table */}
               <div className="overflow-x-auto">
 
-                <table className="w-full text-left">
+                <table className="data-table">
 
                   <thead>
                     <tr className="border-y border-[#f0f0f2] bg-[#fafafa] text-[11px] font-medium uppercase tracking-wider text-[#a1a1a6]">
@@ -448,122 +454,137 @@ function Dashboard() {
             </div>
 
             {/* Activity panel */}
-            <div className="rounded-2xl border border-[#e5e5ea] bg-white p-6 xl:col-span-4">
+            <div className="settings-panel min-w-0 overflow-hidden xl:col-span-4">
 
-              <div className="mb-7 flex items-center justify-between">
+              <div className="border-b border-[#e5e5ea] px-7 py-5">
 
-                <div>
-                  <h2 className="text-base font-semibold text-[#1d1d1f]">
-                    Incident overview
-                  </h2>
+                <div className="flex items-center justify-between gap-4">
 
-                  <p className="mt-1 text-xs text-[#86868b]">
-                    Current incident distribution
-                  </p>
-                </div>
+                  <div>
+                    <h2 className="text-base font-semibold text-[#1d1d1f]">
+                      Incident overview
+                    </h2>
 
-                <MoreHorizontal size={19} className="text-[#86868b]" />
+                    <p className="mt-1 text-xs text-[#86868b]">
+                      Current incident distribution
+                    </p>
+                  </div>
 
-              </div>
-
-              {/* Incident status summary */}
-              <div className="mb-8 rounded-xl bg-[#f5f5f7] p-4">
-
-                <div className="flex items-center gap-2">
-
-                  <div className="h-2 w-2 rounded-full bg-[#0071e3]" />
-
-                  <p className="text-sm font-semibold text-[#1d1d1f]">
-                    Incident monitoring active
-                  </p>
+                  <MoreHorizontal size={19} className="text-[#86868b]" />
 
                 </div>
 
-                <p className="mt-2 text-xs leading-5 text-[#86868b]">
-                  Your platform has recorded {totalCount} incidents across its monitored services.
-                </p>
-
               </div>
 
-              <div className="space-y-6">
+              <div className="space-y-0 px-7">
 
-                {[
-                  {
-                    label: 'Open',
-                    count: openCount,
-                    color: 'bg-[#ff9f0a]',
-                  },
-                  {
-                    label: 'Investigating',
-                    count: investigatingCount,
-                    color: 'bg-[#0071e3]',
-                  },
-                  {
-                    label: 'Resolved',
-                    count: resolvedCount,
-                    color: 'bg-[#34c759]',
-                  },
-                ].map((item) => {
+                {/* Incident status summary */}
+                <div className="mt-5 mb-8 rounded-xl bg-[#f5f5f7] p-4">
 
-                  const percentage = incidents.length
-                    ? (item.count / incidents.length) * 100
-                    : 0
+                  <div className="flex items-center gap-2">
 
-                  return (
+                    <div className="h-2 w-2 rounded-full bg-[#0071e3]" />
 
-                    <div key={item.label}>
+                    <p className="text-sm font-semibold text-[#1d1d1f]">
+                      Incident monitoring active
+                    </p>
 
-                      <div className="mb-2 flex justify-between">
+                  </div>
 
-                        <span className="text-sm text-[#6e6e73]">
-                          {item.label}
-                        </span>
+                  <p className="mt-2 text-xs leading-5 text-[#86868b]">
+                    Your platform has recorded {totalCount} incidents across its monitored services.
+                  </p>
 
-                        <span className="text-sm font-semibold text-[#1d1d1f]">
-                          {item.count}
-                        </span>
+                </div>
+
+                <div className="space-y-0">
+
+                  {[
+                    {
+                      label: 'Open',
+                      count: statistics.open,
+                      color: 'bg-[#ff9f0a]',
+                    },
+                    {
+                      label: 'Investigating',
+                      count: investigatingCount,
+                      color: 'bg-[#0071e3]',
+                    },
+                    {
+                      label: 'Resolved',
+                      count: statistics.resolved,
+                      color: 'bg-[#34c759]',
+                    },
+                  ].map((item) => {
+
+                    const percentage = incidents.length
+                      ? (item.count / incidents.length) * 100
+                      : 0
+
+                    return (
+
+                      <div
+                        key={item.label}
+                        className="flex min-w-0 items-start gap-3 border-b border-[#f0f0f2] py-5 last:border-b-0"
+                      >
+
+                        <div className="min-w-0 flex-1">
+
+                          <div className="mb-2 flex justify-between">
+
+                            <span className="text-sm text-[#6e6e73]">
+                              {item.label}
+                            </span>
+
+                            <span className="text-sm font-semibold text-[#1d1d1f]">
+                              {item.count}
+                            </span>
+
+                          </div>
+
+                          <div className="h-1.5 overflow-hidden rounded-full bg-[#f0f0f2]">
+
+                            <div
+                              className={`h-full rounded-full ${item.color}`}
+                              style={{ width: `${percentage}%` }}
+                            />
+
+                          </div>
+
+                        </div>
 
                       </div>
 
-                      <div className="h-1.5 overflow-hidden rounded-full bg-[#f0f0f2]">
-
-                        <div
-                          className={`h-full rounded-full ${item.color}`}
-                          style={{ width: `${percentage}%` }}
-                        />
-
-                      </div>
-
-                    </div>
-
-                  )
-                })}
-
-              </div>
-
-              <div className="mt-8 border-t border-[#e5e5ea] pt-5">
-
-                <div className="flex items-center justify-between">
-
-                  <p className="text-xs text-[#86868b]">
-                    Last updated
-                  </p>
-
-                  <p className="text-xs font-medium text-[#1d1d1f]">
-                    {lastUpdated
-                      ? lastUpdated.toLocaleTimeString()
-                      : '—'}
-                  </p>
+                    )
+                  })}
 
                 </div>
 
-                <button
-                  onClick={fetchIncidents}
-                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-[#e5e5ea] py-2.5 text-sm font-medium text-[#1d1d1f] transition hover:bg-[#f5f5f7]"
-                >
-                  Refresh dashboard
-                  <ArrowUpRight size={15} />
-                </button>
+                <div className="mt-8 border-t border-[#e5e5ea] pt-5">
+
+                  <div className="flex items-center justify-between">
+
+                    <p className="text-xs text-[#86868b]">
+                      Last updated
+                    </p>
+
+                    <p className="text-xs font-medium text-[#1d1d1f]">
+                      {lastUpdated
+                        ? lastUpdated.toLocaleTimeString()
+                        : '—'}
+                    </p>
+
+                  </div>
+
+                  <button
+                    onClick={fetchIncidents}
+                    className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-[#e5e5ea] py-2.5 text-sm font-medium text-[#1d1d1f] transition hover:bg-[#f5f5f7]"
+                  >
+                    Refresh dashboard
+                    <ArrowUpRight size={15} />
+                  </button>
+
+                </div>
 
               </div>
 
