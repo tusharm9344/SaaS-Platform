@@ -172,7 +172,7 @@ function Navbar({ onMenuClick }) {
             }
           }}
         >
-          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-[#e5e5ea] bg-white shadow-2xl">
+          <div className="search-modal">
 
             {/* Search Input */}
             <div className="flex items-center gap-3 border-b border-[#e5e5ea] px-5">
@@ -200,10 +200,7 @@ function Navbar({ onMenuClick }) {
 
             {/* Results */}
             <div
-              className="absolute left-0 right-0 top-full z-50 mt-2
-                max-h-[min(420px,60vh)] overflow-y-auto overflow-x-hidden
-                rounded-xl border border-[#e5e5ea] bg-white p-2
-                shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
+              className="search-results"
             >
 
               <p className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#a1a1a6]">
@@ -243,21 +240,19 @@ function Navbar({ onMenuClick }) {
                 <button
                   key={incident.id}
                   onClick={() => openIncident(incident.id)}
-                  className="flex w-full min-w-0 items-center gap-3
-                    rounded-lg px-3 py-3 text-left
-                    transition-colors hover:bg-[#f5f5f7]"
+                  className="search-result"
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#fff0ef] text-[#ff3b30]">
                     <AlertCircle size={17} />
                   </div>
 
-                  <div className="min-w-0 flex-1 overflow-hidden">
+                  <div className="search-result-copy">
 
-                    <p className="truncate text-sm font-medium text-[#1d1d1f]">
+                    <p className="search-result-title">
                       {incident.title}
                     </p>
 
-                    <p className="mt-1 truncate text-xs text-[#86868b]">
+                    <p className="search-result-meta">
                       {incident.service_name} · {incident.environment}
                     </p>
 
