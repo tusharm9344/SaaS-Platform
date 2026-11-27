@@ -7,16 +7,28 @@ import {
   ChevronDown,
   Plus,
   X,
+  Container,
 } from 'lucide-react'
 
+import { useLocation, useNavigate } from 'react-router-dom'
+
 const menuItems = [
-  { name: 'Overview', icon: LayoutDashboard },
-  { name: 'Applications', icon: Layers },
-  { name: 'Services', icon: Server },
-  { name: 'Incidents', icon: AlertCircle },
+  { name: 'Overview', icon: LayoutDashboard, path: '/' },
+  { name: 'Applications', icon: Layers, path: '/applications' },
+  { name: 'Services', icon: Server, path: '/services' },
+  { name: 'Containers', icon: Container, path: '/containers' },
+  { name: 'Incidents', icon: AlertCircle, path: '/incidents' },
 ]
 
 function Sidebar({ isOpen, onClose }) {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  const handleNavigation = (path) => {
+    navigate(path)
+    onClose()
+  }
+
   return (
     <>
       {isOpen && (
@@ -26,7 +38,6 @@ function Sidebar({ isOpen, onClose }) {
         />
       )}
 
-      {/* Sidebar drawer */}
       <aside
         aria-hidden={!isOpen}
         inert={!isOpen}
@@ -34,8 +45,6 @@ function Sidebar({ isOpen, onClose }) {
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-
-        {/* Logo */}
         <div className="mb-10 flex items-center justify-between">
           <h1 className="text-[22px] font-semibold tracking-tight text-[#1d1d1f]">
             Runtime<span className="text-[#0071e3]">RCA</span>
@@ -49,7 +58,6 @@ function Sidebar({ isOpen, onClose }) {
           </button>
         </div>
 
-        {/* Workspace */}
         <div className="mb-8 rounded-xl border border-[#e5e5ea] p-3">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0071e3] text-sm font-semibold text-white">
@@ -60,30 +68,27 @@ function Sidebar({ isOpen, onClose }) {
               <p className="text-sm font-medium text-[#1d1d1f]">
                 Workspace
               </p>
-              <p className="text-xs text-[#86868b]">
-                Free Plan
-              </p>
+              <p className="text-xs text-[#86868b]">Free Plan</p>
             </div>
 
             <ChevronDown size={15} className="text-[#86868b]" />
           </div>
         </div>
 
-        {/* Navigation */}
         <div>
           <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-[#a1a1a6]">
             Workspace
           </p>
 
           <nav className="space-y-1">
-            {menuItems.map((item, index) => {
+            {menuItems.map((item) => {
               const Icon = item.icon
-              const active = index === 0
+              const active = location.pathname === item.path
 
               return (
                 <button
                   key={item.name}
-                  onClick={onClose}
+                  onClick={() => handleNavigation(item.path)}
                   className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all ${
                     active
                       ? 'bg-[#f2f2f7] font-medium text-[#1d1d1f]'
@@ -98,7 +103,6 @@ function Sidebar({ isOpen, onClose }) {
           </nav>
         </div>
 
-        {/* Bottom */}
         <div className="mt-auto space-y-2">
           <button
             onClick={onClose}
@@ -115,7 +119,6 @@ function Sidebar({ isOpen, onClose }) {
             </button>
           </div>
         </div>
-
       </aside>
     </>
   )

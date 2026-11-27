@@ -12,3 +12,7 @@ dependencies = []
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["runtime_rca*"]
+
+dependencies = [
+    "docker>=7.1.0",
+]

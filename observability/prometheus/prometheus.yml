@@ -7,6 +7,6 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  - job_name: alloy
+  - job_name: cadvisor
     static_configs:
-      - targets: ["alloy:12345"]
+      - targets: ["cadvisor:8080"]

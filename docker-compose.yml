@@ -1,4 +1,19 @@
 services:
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: runtimerca-cadvisor
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+    restart: unless-stopped
   loki:
     image: grafana/loki:3.6.2
     container_name: runtimerca-loki
@@ -8,6 +23,23 @@ services:
     volumes:
       - ./observability/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
+    restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: runtimerca-alloy
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - alloy_data:/var/lib/alloy/data
+    ports:
+      - "12345:12345"
+    depends_on:
+      - loki
     restart: unless-stopped
 
   prometheus:
@@ -40,5 +72,6 @@ services:
 
 volumes:
   loki_data:
+  alloy_data:
   prometheus_data:
   grafana_data:

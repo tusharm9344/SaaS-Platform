@@ -3,10 +3,17 @@ from django.test import TestCase
 from django.utils import timezone
 
 from organizations.models import Organization
-from applications.models import Application
+from applications.models import (
+    Application,
+    DiscoveredContainer,
+    Service,
+)
 from ingestion.models import ErrorEvent
 from incidents.models import Incident
-from incidents.services import group_error_event
+from incidents.services import (
+    detect_container_anomalies,
+    group_error_event,
+)
 
 
 class IncidentGroupingTests(TestCase):
@@ -103,3 +110,66 @@ class IncidentGroupingTests(TestCase):
             Incident.objects.filter(pk=incident.pk).count(),
             1,
         )
+
+
+class ContainerAnomalyTests(TestCase):
+    def setUp(self):
+        organization = Organization.objects.create(
+            name="Container Organization",
+            slug="container-organization",
+        )
+        self.application = Application.objects.create(
+            organization=organization,
+            name="Container Application",
+            slug="container-application",
+        )
+        self.service = Service.objects.create(
+            application=self.application,
+            name="api",
+            environment="production",
+        )
+        self.container = DiscoveredContainer.objects.create(
+            application=self.application,
+            service=self.service,
+            container_id="container-1",
+            name="api-1",
+            image="api:latest",
+            status="running",
+            cpu_percent=90,
+            memory_percent=50,
+            metrics_updated_at=timezone.now(),
+        )
+
+    def test_high_cpu_creates_and_updates_incident(self):
+        detect_container_anomalies(self.container)
+        incident = Incident.objects.get(
+            application=self.application,
+            service=self.service,
+        )
+        self.assertEqual(
+            incident.title,
+            "High CPU usage: api-1 (90.00%)"
+        )
+        self.assertEqual(incident.occurrence_count, 1)
+
+        # A repeated high CPU reading should not increment the count.
+        detect_container_anomalies(self.container)
+        incident.refresh_from_db()
+        self.assertEqual(incident.occurrence_count, 1)
+        self.assertEqual(incident.status, Incident.Status.OPEN)
+
+    def test_low_cpu_resolves_incident_and_high_cpu_reopens_it(self):
+        detect_container_anomalies(self.container)
+        incident = Incident.objects.get(service=self.service)
+
+        self.container.cpu_percent = 50
+        self.container.save(update_fields=["cpu_percent"])
+        detect_container_anomalies(self.container)
+        incident.refresh_from_db()
+        self.assertEqual(incident.status, Incident.Status.RESOLVED)
+
+        self.container.cpu_percent = 90
+        self.container.save(update_fields=["cpu_percent"])
+        detect_container_anomalies(self.container)
+        incident.refresh_from_db()
+        self.assertEqual(incident.status, Incident.Status.OPEN)
