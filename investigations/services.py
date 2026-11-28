@@ -1,8 +1,6 @@
 import json
-import os
+import logging
 from datetime import datetime
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from django.utils import timezone
 
@@ -15,6 +13,8 @@ from investigations.clients.loki import LokiClient
 from investigations.models import Investigation
 
 
+logger = logging.getLogger(__name__)
+
 CORRELATION_WINDOW_BEFORE = 10 * 60
 CORRELATION_WINDOW_AFTER = 5 * 60
 
@@ -23,8 +23,6 @@ MEMORY_THRESHOLD = 85
 
 MAX_LOGS = 10
 MAX_AI_EVENTS = 30
-
-OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
 
 def add_hypothesis(hypotheses, cause, confidence):
@@ -304,16 +302,28 @@ def run_ai_investigation(
     fallback_analysis,
 ):
     """
-    Analyse collected infrastructure evidence using OpenAI.
+    Analyse collected application and infrastructure evidence
+    using the AI provider configured for the incident's organization.
+
     Returns None if AI analysis cannot be completed.
     """
 
-    api_key = os.getenv("OPENAI_API_KEY")
+    from organizations.models import AIProviderConfig
+    from organizations.crypto import decrypt_api_key
+    from investigations.clients.ai import generate_completion
 
-    if not api_key:
+    config = AIProviderConfig.objects.filter(
+        organization=incident.application.organization,
+        is_enabled=True,
+    ).first()
+
+    if not config or not config.encrypted_api_key:
         return None
 
-    model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+    try:
+        api_key = decrypt_api_key(config.encrypted_api_key)
+    except Exception:
+        return None
 
     event_data = []
 
@@ -378,44 +388,27 @@ Return valid JSON with exactly this structure:
 }
 """
 
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": json.dumps(
-                    investigation_context,
-                    default=str,
-                ),
-            },
-        ],
-        "response_format": {
-            "type": "json_object",
-        },
-        "temperature": 0.2,
-    }
-
-    request = Request(
-        OPENAI_API_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-
     try:
-        with urlopen(request, timeout=45) as response:
-            result = json.loads(
-                response.read().decode("utf-8")
-            )
+        content = generate_completion(
+            model=config.model_name,
+            api_key=api_key,
+            api_base=config.api_base or None,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        investigation_context,
+                        default=str,
+                    ),
+                },
+            ],
+            timeout=45,
+        )
 
-        content = result["choices"][0]["message"]["content"]
         analysis = json.loads(content)
 
         summary = analysis.get("summary")
@@ -470,18 +463,12 @@ Return valid JSON with exactly this structure:
             "summary": summary[:10000],
             "hypotheses": validated_hypotheses,
             "recommended_actions": validated_actions,
-            "model": model,
+            "model": config.model_name,
+            "provider": config.provider,
         }
 
-    except (
-        HTTPError,
-        URLError,
-        TimeoutError,
-        json.JSONDecodeError,
-        KeyError,
-        TypeError,
-        ValueError,
-    ):
+    except Exception:
+        logger.exception("AI investigation failed.")
         return None
 
 
@@ -604,7 +591,7 @@ def investigate_incident(incident, investigation):
 
         evidence.append({
             "type": "ai_analysis",
-            "provider": "OpenAI",
+            "provider": ai_analysis["provider"],
             "model": ai_analysis["model"],
             "status": "completed",
         })
@@ -620,7 +607,7 @@ def investigate_incident(incident, investigation):
 
         evidence.append({
             "type": "ai_analysis",
-            "provider": "OpenAI",
+            "provider": "configured_provider",
             "status": "unavailable",
         })
 

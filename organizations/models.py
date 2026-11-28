@@ -64,3 +64,23 @@ class Membership(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.organization.name}"
+
+class AIProviderConfig(models.Model):
+    organization = models.OneToOneField(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="ai_provider_config",
+    )
+
+    provider = models.CharField(max_length=50)
+    model_name = models.CharField(max_length=200)
+    encrypted_api_key = models.TextField()
+    api_base = models.URLField(blank=True)
+
+    is_enabled = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.organization.name} - {self.provider}"

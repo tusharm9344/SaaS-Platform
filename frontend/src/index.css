@@ -506,3 +506,60 @@ button {
   .stat-card-value { font-size: 27px; }
   .incident-section-panel > .incident-section-content { padding: 18px; }
 }
+/* Consistent dashboard content alignment */
+.page-container {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
+  padding-left: clamp(24px, 4.5vw, 72px) !important;
+  padding-right: clamp(24px, 4.5vw, 72px) !important;
+  padding-top: 32px;
+  padding-bottom: 40px;
+}
+
+/* Better heading spacing */
+.page-container h1 {
+  line-height: 1.3;
+}
+
+.page-container h1 + p {
+  margin-top: 8px;
+}
+
+/* Responsive spacing */
+@media (max-width: 640px) {
+  .page-container {
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+    padding-top: 24px;
+  }
+}
+
+/* RuntimeRCA dashboard layout */
+.page-container {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 1600px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+
+  padding: 32px clamp(24px, 4.5vw, 72px) 48px !important;
+}
+
+/* Prevent content from overflowing */
+.page-container > * {
+  min-width: 0;
+}
+
+/* Consistent page heading */
+.page-container h1 {
+  line-height: 1.3;
+}
+
+/* Responsive layout */
+@media (max-width: 768px) {
+  .page-container {
+    padding: 24px 18px 36px !important;
+  }
+}

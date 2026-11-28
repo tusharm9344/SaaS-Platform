@@ -128,7 +128,8 @@ class DockerDiscoveryAgent:
             labels = config.get("Labels") or {}
 
             service_name = (
-                labels.get("com.docker.compose.service")
+                labels.get("runtime_rca.service")
+                or labels.get("com.docker.compose.service")
                 or container.name
             )
 

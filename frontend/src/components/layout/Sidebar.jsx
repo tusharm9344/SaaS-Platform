@@ -105,15 +105,22 @@ function Sidebar({ isOpen, onClose }) {
 
         <div className="mt-auto space-y-2">
           <button
-            onClick={onClose}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#6e6e73] transition hover:bg-[#f5f5f7]"
+            onClick={() => handleNavigation('/settings')}
+            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
+              location.pathname === '/settings'
+                ? 'bg-[#f2f2f7] font-medium text-[#1d1d1f]'
+                : 'text-[#6e6e73] hover:bg-[#f5f5f7] hover:text-[#1d1d1f]'
+            }`}
           >
             <Settings size={18} />
             Settings
           </button>
 
           <div className="border-t border-[#e5e5ea] pt-4">
-            <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#0071e3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#0077ed]">
+            <button
+              onClick={() => handleNavigation('/applications')}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#0071e3] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#0077ed]"
+            >
               <Plus size={17} />
               New Application
             </button>

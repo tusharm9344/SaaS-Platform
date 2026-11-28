@@ -5,12 +5,12 @@ from celery.exceptions import Retry
 from django.test import TestCase
 from django.utils import timezone
 
-from organizations.models import Organization
+from organizations.models import AIProviderConfig, Organization
 from applications.models import Application
 from ingestion.models import ErrorEvent
 from incidents.models import Incident
 from investigations.models import Investigation
-from investigations.services import investigate_incident
+from investigations.services import investigate_incident, run_ai_investigation
 from investigations.tasks import investigate_incident_task
 
 
@@ -99,6 +99,55 @@ class InvestigationServiceTests(InvestigationTestBase):
         self.assertTrue(
             Investigation.objects.filter(pk=report.pk).exists()
         )
+
+    def test_ai_investigation_uses_organization_provider_config(self):
+        incident = self.create_incident_with_event(
+            "Database connection failed",
+            "ConnectionError",
+        )
+        config = AIProviderConfig(
+            organization=self.application.organization,
+            provider="custom-provider",
+            model_name="custom-model",
+            encrypted_api_key="encrypted-key",
+            api_base="https://ai.example.com/v1",
+        )
+        event = ErrorEvent.objects.get(incident=incident)
+
+        with patch(
+            "organizations.models.AIProviderConfig.objects.filter"
+        ) as find_config, patch(
+            "organizations.crypto.decrypt_api_key",
+            return_value="decrypted-key",
+        ) as decrypt_api_key, patch(
+            "investigations.clients.ai.generate_completion",
+            return_value=(
+                '{"summary":"Analysis complete","hypotheses":'
+                '[{"cause":"Database connectivity issue","confidence":0.8,'
+                '"reasoning":"Evidence supports this hypothesis."}],'
+                '"recommended_actions":["Check database availability."]}'
+            ),
+        ) as generate_completion:
+            find_config.return_value.first.return_value = config
+            analysis = run_ai_investigation(
+                incident,
+                [event],
+                [{"type": "error_summary"}],
+                {"summary": "Fallback analysis"},
+            )
+
+        self.assertEqual(analysis["provider"], "custom-provider")
+        self.assertEqual(analysis["model"], "custom-model")
+        generate_completion.assert_called_once()
+        self.assertEqual(
+            generate_completion.call_args.kwargs["api_base"],
+            "https://ai.example.com/v1",
+        )
+        self.assertEqual(
+            generate_completion.call_args.kwargs["api_key"],
+            "decrypted-key",
+        )
+        decrypt_api_key.assert_called_once_with("encrypted-key")
 
 
 class CeleryInvestigationTaskTests(InvestigationTestBase):
